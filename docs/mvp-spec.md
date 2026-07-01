@@ -181,6 +181,8 @@ No write tools in v0.1.
 
 ## Suggested Tech Stack
 
+These are recommendations, not hard requirements. The implementer should choose the simplest maintainable path for the MVP.
+
 - TypeScript
 - `yaml`
 - `zod`
