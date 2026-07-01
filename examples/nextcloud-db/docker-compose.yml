@@ -1,0 +1,60 @@
+services:
+  nextcloud:
+    image: nextcloud:latest
+    container_name: nextcloud
+    environment:
+      MYSQL_HOST: db
+      MYSQL_DATABASE: nextcloud
+      MYSQL_USER: nextcloud
+      MYSQL_PASSWORD: EXAMPLE_ONLY_DO_NOT_USE
+      REDIS_HOST: redis
+    volumes:
+      - ./nextcloud:/var/www/html
+    ports:
+      - "8081:80"
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+  db:
+    image: mariadb:10.11
+    container_name: nextcloud_db
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    environment:
+      MYSQL_ROOT_PASSWORD: CHANGE_ME_NOT_A_REAL_SECRET
+      MYSQL_DATABASE: nextcloud
+      MYSQL_USER: nextcloud
+      MYSQL_PASSWORD: EXAMPLE_ONLY_DO_NOT_USE
+    volumes:
+      - ./db:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    restart: unless-stopped
+
+  redis:
+    image: redis:latest
+    container_name: nextcloud_redis
+    restart: unless-stopped
+
+  proxy:
+    image: traefik:v3.0
+    container_name: traefik
+    command: --providers.docker
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik:/etc/traefik
+    restart: unless-stopped
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    command: --cleanup --interval 3600
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    privileged: true
+    network_mode: host
+    restart: unless-stopped

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+coverage/
+*.tsbuildinfo
+selfhosted-report.*
+
+# Never commit real secrets — commit a .env.example template instead.
+.env
