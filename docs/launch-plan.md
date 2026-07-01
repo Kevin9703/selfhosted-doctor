@@ -1,5 +1,7 @@
 # Launch Plan
 
+For copy/paste launch assets, use [`docs/launch-kit.md`](launch-kit.md).
+
 ## Launch Principle
 
 Do not launch a big vague tool. Launch a small memorable check:
@@ -13,7 +15,7 @@ AI/MCP is the hook, but deterministic scanning is the product.
 Before public launch, prepare:
 
 - README with one-command quickstart
-- Terminal or Markdown report screenshot
+- Terminal report screenshot (`docs/assets/readme-terminal.svg`)
 - Three example stacks:
   - Vaultwarden + Cloudflare Tunnel
   - Immich + Postgres
@@ -74,12 +76,14 @@ Good fits:
 - Cloudflare Tunnel and Cloudflare Access updates
 - Self-hosted service security incidents
 - Docker Compose security best practices
+- NAS users asking how to audit services before exposing them
 
 Avoid:
 
 - Generic model launches
 - Unrelated AI agent hype
 - Topics that do not connect to self-hosting, security, or local infrastructure
+- Claiming full NAS support before non-Compose runtime inventory exists
 
 ## 30-Day Plan
 

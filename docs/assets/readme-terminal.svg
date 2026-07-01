@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="620" viewBox="0 0 980 620" role="img" aria-labelledby="title desc">
+  <title id="title">selfhosted-doctor terminal report screenshot</title>
+  <desc id="desc">A terminal-style screenshot showing a selfhosted-doctor scan report with a 56 out of 100 risk score and concrete security findings.</desc>
+  <rect width="980" height="620" rx="14" fill="#111318"/>
+  <rect x="1" y="1" width="978" height="618" rx="14" fill="none" stroke="#2d3340"/>
+  <rect x="0" y="0" width="980" height="48" rx="14" fill="#191d24"/>
+  <circle cx="28" cy="24" r="7" fill="#ff5f57"/>
+  <circle cx="52" cy="24" r="7" fill="#ffbd2e"/>
+  <circle cx="76" cy="24" r="7" fill="#28c840"/>
+  <text x="110" y="30" fill="#aab4c3" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">selfhosted-doctor scan ./nas-stack</text>
+
+  <text x="34" y="88" fill="#e6edf3" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20" font-weight="700">selfhosted-doctor report</text>
+
+  <text x="34" y="128" fill="#ffcc66" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700">Risk score: 56/100</text>
+  <text x="34" y="158" fill="#c9d1d9" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">Files scanned: 3</text>
+  <text x="34" y="184" fill="#c9d1d9" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">Findings: 2 high, 2 medium, 1 low</text>
+
+  <text x="34" y="230" fill="#ff7b72" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="700">High</text>
+  <text x="34" y="260" fill="#c9d1d9" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15">- db: Database port 5432 is published to the public</text>
+  <text x="34" y="286" fill="#c9d1d9" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15">- Cloudflare Tunnel routes to a sensitive service without Access</text>
+
+  <text x="34" y="334" fill="#f2cc60" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="700">Medium</text>
+  <text x="34" y="364" fill="#c9d1d9" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15">- Cloudflare Tunnel has no Access policy</text>
+  <text x="34" y="390" fill="#c9d1d9" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15">- vaultwarden: Has no healthcheck</text>
+
+  <text x="34" y="438" fill="#79c0ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="700">Exposure</text>
+  <text x="34" y="468" fill="#c9d1d9" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15">- db: 0.0.0.0:5432 -&gt; container:5432 (tcp)</text>
+
+  <text x="34" y="516" fill="#7ee787" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="700">Suggested fixes</text>
+  <text x="34" y="546" fill="#c9d1d9" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15">- Bind databases to localhost or keep them on an internal network.</text>
+  <text x="34" y="572" fill="#c9d1d9" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15">- Protect sensitive apps with Cloudflare Access and MFA.</text>
+</svg>

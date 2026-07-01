@@ -8,6 +8,8 @@ AI-ready security checks for self-hosted homelabs, starting with Docker Compose.
 
 The goal is not to replace Trivy, Checkov, or enterprise security scanners. The goal is to catch the common self-hosted mistakes that happen right before a private service becomes public.
 
+![selfhosted-doctor terminal report](docs/assets/readme-terminal.svg)
+
 ## Quickstart
 
 ```bash
@@ -67,6 +69,22 @@ selfhosted-doctor mcp                         # run the read-only MCP server ove
 `path` can be a Compose file (`docker-compose.yml`, `compose.yml`) or a directory. When you point it at a single file, sibling `.env` and `cloudflared` config files in the same folder are scanned too.
 
 `--fail-on high|medium|low` makes the process exit `1` when a finding at or above that severity exists — handy in a pre-deploy CI step. The default is `none` (always exit `0`).
+
+## NAS without a Compose file
+
+v0.1 is intentionally **Compose-first**. It scans:
+
+- `docker-compose.yml`, `docker-compose.yaml`, `compose.yml`, and `compose.yaml`
+- sibling `.env` / `.env.*` files
+- Cloudflare Tunnel config near the stack
+
+Many NAS setups do not have a Compose file in the obvious place. If you use Portainer, Dockge, Synology Container Manager projects, or a copied stack from another machine, look for the exported stack/compose YAML and scan that folder:
+
+```bash
+npx selfhosted-doctor scan /path/to/exported-stack
+```
+
+If your services were created only through a NAS UI, Package Center, app catalog, or raw `docker run`, this version will not fully understand them yet. Runtime inventory support (`docker ps` / `docker inspect` export, still read-only) is the next product direction.
 
 ## What it checks
 
@@ -148,6 +166,8 @@ Docker Compose file -> deterministic scan -> terminal / JSON / Markdown report (
 ```
 
 Out of scope for v0.1: no automatic fixes, no Docker daemon access, no Cloudflare API calls, no public internet scanning, no Web UI.
+
+Next after v0.1: read-only runtime inventory for NAS users who do not have Compose files.
 
 ## Disclaimer
 

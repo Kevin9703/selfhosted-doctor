@@ -14,6 +14,7 @@ Primary users:
 
 - People running services on a NAS, VPS, or home server
 - Docker Compose self-hosters
+- Portainer / Dockge / NAS users who can export or find their Compose stacks
 - Cloudflare Tunnel / reverse proxy users
 - Claude Code / Codex / Cursor users who want AI-readable reports
 - Developers who care about security but are not full-time security engineers
@@ -24,6 +25,7 @@ Not the initial target:
 - Terraform-heavy cloud security teams
 - Professional pentesters
 - Users looking for a full homelab dashboard
+- NAS users who only run Package Center / app-catalog services and have no container config to scan yet
 
 ## Problem
 
@@ -67,6 +69,16 @@ Get:
 - Markdown and JSON reports
 - Optional AI explanation
 - Optional read-only MCP server
+
+## Input Scope
+
+v0.1 scans configuration files, not live machines:
+
+- Docker Compose files
+- sibling `.env` files
+- nearby Cloudflare Tunnel config
+
+This is honest and launchable. The next major product expansion is read-only runtime inventory for NAS users who do not have Compose files: accept exported `docker ps` / `docker inspect` data, then report exposed ports, images, mounts, privileged mode, Docker socket usage, and service-aware notes without connecting to the Docker daemon.
 
 ## Success Metrics
 
