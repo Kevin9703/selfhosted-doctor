@@ -1,6 +1,6 @@
 import type { Finding, Rule, Severity } from "../model";
 import { detectServiceType, isDatabaseService } from "../services";
-import { formatPort, isPublicPort } from "./util";
+import { effectivePort, formatPort, isPublicPort } from "./util";
 
 export const rule: Rule = {
   id: "exposed-port",
@@ -19,10 +19,11 @@ export const rule: Rule = {
         if (!isPublicPort(port)) {
           continue;
         }
+        const containerPort = effectivePort(port.containerPort);
         let severity: Severity = "high";
         if (
           isIngress &&
-          (port.containerPort === "80" || port.containerPort === "443")
+          (containerPort === "80" || containerPort === "443")
         ) {
           // Expected ingress for a reverse proxy / tunnel.
           severity = "medium";
@@ -30,11 +31,11 @@ export const rule: Rule = {
         findings.push({
           ruleId: rule.id,
           severity,
-          title: `Publishes port ${port.containerPort} to the public`,
+          title: `Publishes port ${containerPort} to the public`,
           service: service.name,
           file: service.file,
           detail:
-            `Service "${service.name}" publishes container port ${port.containerPort} on a public host interface, making it reachable from any network the host is on.`,
+            `Service "${service.name}" publishes container port ${containerPort} on a public host interface, making it reachable from any network the host is on.`,
           recommendation:
             "Bind the port to 127.0.0.1 (e.g. 127.0.0.1:PORT:PORT) or place the service behind a reverse proxy / tunnel that enforces authentication.",
           evidence: formatPort(port),

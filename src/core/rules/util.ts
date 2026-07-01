@@ -56,6 +56,20 @@ export function isPublicPort(port: PortMapping): boolean {
   return false;
 }
 
+/** Return the default inside a full Compose parameter expansion: ${VAR:-8080}. */
+export function composeDefault(value: string): string | undefined {
+  const match = value.match(/^\$\{[^}:]+(?::-|-)([^}]+)\}$/);
+  return match?.[1];
+}
+
+/**
+ * Best-effort display/effective port for rules. Keeps literal ports unchanged
+ * and resolves whole-value Compose defaults such as `${PORT:-80}` to `80`.
+ */
+export function effectivePort(value: string): string {
+  return composeDefault(value) ?? value;
+}
+
 /**
  * Format a port for evidence, e.g. "0.0.0.0:8080->80/tcp". Uses "0.0.0.0" when
  * the host interface is not specified.

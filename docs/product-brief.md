@@ -70,6 +70,8 @@ Get:
 - Optional AI explanation
 - Optional read-only MCP server
 
+The output is a **prioritized local configuration review of your active stack**, not a universal security score or guarantee. The risk score reflects the services you actually run by default; optional profile-gated services and template/example files are reported separately and don't drag the score down.
+
 ## Input Scope
 
 v0.1 scans configuration files, not live machines:

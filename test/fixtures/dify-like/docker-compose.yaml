@@ -1,0 +1,71 @@
+# FAKE fixture modeled on a large upstream Compose file (Dify-style) for tests.
+# The default/active services are a reasonably safe setup (bound to localhost,
+# behind a host reverse proxy). The scary bits — public databases, privileged —
+# are gated behind optional `profiles:` so they must NOT sink the default score.
+# Secret defaults use the well-known Dify placeholder on purpose.
+services:
+  api:
+    image: langgenius/dify-api:0.6.13
+    restart: always
+    environment:
+      MODE: api
+      SECRET_KEY: ${SECRET_KEY:-sk-difyai123456placeholder}
+      DB_PASSWORD: ${DB_PASSWORD:-difyai123456}
+    expose:
+      - "5001"
+
+  worker:
+    image: langgenius/dify-api:0.6.13
+    restart: always
+    environment:
+      MODE: worker
+      DB_PASSWORD: ${DB_PASSWORD:-difyai123456}
+
+  web:
+    image: langgenius/dify-web:0.6.13
+    restart: always
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-difyai123456}
+    expose:
+      - "5432"
+
+  nginx:
+    image: nginx:1.25-alpine
+    restart: always
+    # Bound to localhost — front this with a host reverse proxy / tunnel.
+    ports:
+      - "127.0.0.1:8080:80"
+
+  # ---- optional, profile-gated services (conditional; not scored by default) ----
+  milvus:
+    image: milvusdb/milvus:v2.3.3
+    profiles:
+      - milvus
+    command: milvus run standalone
+    ports:
+      - "19530:19530"
+
+  vastbase:
+    image: vastdata/vastbase-vector:latest
+    profiles:
+      - vastbase
+    environment:
+      GS_PASSWORD: ${VASTBASE_PASSWORD:-Vastbase@123}
+    ports:
+      - "5434:5432"
+
+  opengauss:
+    image: enmotech/opengauss:5.0.0
+    profiles:
+      - opengauss
+    privileged: true
+    environment:
+      GS_PASSWORD: ${OPENGAUSS_PASSWORD:-Enmo@123}
+    ports:
+      - "6432:5432"

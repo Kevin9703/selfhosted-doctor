@@ -34,11 +34,26 @@ The pipeline is deterministic: `load → parse → run rules → assemble Report
 - **Image-first service detection.** Container names are frequently prefixed with the stack name (`nextcloud_db`), which pollutes name-based matching. Detection checks the image across the whole catalog first, then falls back to the service key / container name.
 - **Severity tuning for signal over noise.** The spec lists several hygiene items as "medium"; a few that would fire on almost every service (`unpinned-image`, `no-user`, `missing-resource-limits`, `missing-labels`) were dialed to `low`/`info` so the High/Medium sections stay actionable. `no-user` only fires for services that actually publish a public port.
 - **Reverse-proxy ingress is context-aware.** A proxy/tunnel publishing `80`/`443` is expected, so `exposed-port` downgrades those to `medium` instead of `high`.
-- **Risk score** = `100 − (high·15 + medium·6 + low·2)`, clamped to `[0,100]`. `info` findings don't affect the score. This is a heuristic for glanceability, not a calibrated metric.
+- **Finding classification (v0.1.1).** Every finding is tagged **active**, **conditional**, or **template**. *Active* findings apply to the default/running stack. *Conditional* findings come from services gated behind a Compose `profiles:` key — they only run when you opt into that profile, so they're reported but excluded from the default score. *Template* findings come from example/placeholder sources (`.env.example`, `.env.sample`, `.env.template`, and files under `examples/`); these are downgraded to info (e.g. `Default secret in template env file`) rather than emitting a high-severity plaintext-secret finding. `--profile <name>` (repeatable) promotes the named profile(s) into scoring, and `--all-profiles` scores every service.
+- **Capped-bucket scoring (v0.1.1).** The score is computed from **active findings only**, using capped risk buckets instead of pure per-finding subtraction:
+
+  ```text
+  score = 100 − Σ (capped active-bucket penalties)
+
+  publicDataServiceExposure  capped at 40
+  privilegedOrHostControl    capped at 30
+  activePlaintextSecrets     capped at 25
+  sensitiveAppWithoutAccess  capped at 25
+  publicAppExposure          capped at 20
+  reliabilityHygiene         capped at 10
+  imagePinning               capped at  5
+  ```
+
+  Capping keeps the score meaningful: one exposed database hurts a lot, but ten unpinned images barely move it, and a big upstream Compose file no longer collapses to `0/100`. Conditional and template findings are shown but never lower the default score. The old linear `100 − (high·15 + medium·6 + low·2)` model is replaced. This is still a heuristic for glanceability, not a calibrated metric — and it grades your **active** configuration, not a universal security posture.
 
 ## Known gaps
 
-- **No `${VAR}` interpolation.** `.env` values are scanned for secrets independently, but the scanner does not substitute them into Compose before evaluating rules. A secret referenced as `${X}` is treated as safe (not plaintext), which is correct; but cross-file resolution of exposure/values is not done.
+- **No `${VAR}` interpolation.** `.env` values are scanned for secrets independently, but the scanner does not substitute them into Compose before evaluating rules. A bare `${X}` reference is treated as safe (not plaintext), which is correct. Fallback defaults (`${X:-secret}`) are the exception: as of v0.1.1 they're flagged, because the literal default ships when the variable is unset. Cross-file resolution of exposure/values is still not done.
 - **`env_file:` directives are not followed** per service; only discovered `.env`-style files are scanned as secret sources.
 - **Cloudflare Access detection is a heuristic** (`/access/i` over the config text). Access policies actually live in the Cloudflare Zero Trust dashboard, which a static file scan cannot see, so this errs toward flagging.
 - **`runs-as-root` / `no-user` can't see image defaults.** We only know what the Compose file declares; an image that drops privileges internally may still be flagged.

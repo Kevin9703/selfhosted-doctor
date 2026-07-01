@@ -16,7 +16,7 @@ import { explainReport, type ExplainProvider } from "./ai/explain";
 import { runMcpServer } from "./mcp/server";
 import type { Report, Severity } from "./core/model";
 
-const VERSION = "0.1.0";
+const VERSION = "0.1.1";
 const SEVERITIES: Severity[] = ["high", "medium", "low", "info"];
 
 function inferFormat(output: string | undefined, explicit: string | undefined): ReportFormat {
@@ -37,7 +37,7 @@ function failThresholdTripped(report: Report, failOn: string): boolean {
   const idx = SEVERITIES.indexOf(failOn as Severity);
   if (idx < 0) return false;
   const atOrAbove = SEVERITIES.slice(0, idx + 1);
-  return atOrAbove.some((sev) => report.summary.counts[sev] > 0);
+  return atOrAbove.some((sev) => report.summary.active[sev] > 0);
 }
 
 interface ScanFlags {
@@ -45,13 +45,15 @@ interface ScanFlags {
   output?: string;
   color?: boolean;
   failOn: string;
+  profile?: string[];
+  allProfiles?: boolean;
 }
 
 function runScan(pathArg: string | undefined, flags: ScanFlags): void {
   const target = pathArg ?? ".";
   let report: Report;
   try {
-    report = scan(target);
+    report = scan(target, { profiles: flags.profile, allProfiles: flags.allProfiles });
   } catch (err) {
     process.stderr.write(pc.red(`Error: ${err instanceof Error ? err.message : String(err)}\n`));
     process.exit(2);
@@ -112,6 +114,16 @@ program
   .option("-f, --format <format>", "Output format: terminal | json | markdown")
   .option("-o, --output <file>", "Write the report to a file instead of stdout")
   .option("--no-color", "Disable colored terminal output")
+  .option(
+    "--profile <name>",
+    "Score/enable an optional Compose profile (repeatable)",
+    (val: string, acc: string[]) => {
+      acc.push(val);
+      return acc;
+    },
+    [] as string[],
+  )
+  .option("--all-profiles", "Score every service, including all profile-gated ones")
   .option(
     "--fail-on <severity>",
     "Exit non-zero when a finding at or above this severity exists (high | medium | low | none)",

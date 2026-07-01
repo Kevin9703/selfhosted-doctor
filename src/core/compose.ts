@@ -23,6 +23,42 @@ function isReferenceValue(value: string): boolean {
   return value.includes("${") || value.startsWith("$");
 }
 
+/**
+ * Extract the default baked into a `${VAR:-default}` or `${VAR-default}`
+ * interpolation. Returns the first such default found, or undefined. The `:-`
+ * form applies when VAR is unset OR empty; the `-` form only when unset — both
+ * ship a hardcoded default a self-hoster may never override.
+ */
+function extractFallbackDefault(value: string): string | undefined {
+  const m = value.match(/\$\{[A-Za-z_][A-Za-z0-9_]*:?-([^}]*)\}/);
+  if (!m) return undefined;
+  const def = m[1];
+  return def !== undefined && def !== "" ? def : undefined;
+}
+
+/** Build an EnvEntry, capturing reference/fallback-default metadata. */
+function makeEnvEntry(key: string, value: string): EnvEntry {
+  const entry: EnvEntry = {
+    key,
+    value,
+    isReference: isReferenceValue(value),
+  };
+  const fallback = extractFallbackDefault(value);
+  if (fallback !== undefined) entry.fallbackDefault = fallback;
+  return entry;
+}
+
+/** Parse a Compose `profiles:` value into a list of profile names. */
+function parseStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const item of value) {
+    if (typeof item === "string" && item.trim() !== "") out.push(item.trim());
+    else if (typeof item === "number") out.push(String(item));
+  }
+  return out;
+}
+
 export function parsePort(entry: unknown): PortMapping | undefined {
   // number form
   if (typeof entry === "number") {
@@ -63,7 +99,7 @@ export function parsePort(entry: unknown): PortMapping | undefined {
       rest = after;
     }
 
-    const parts = rest.split(":");
+    const parts = splitPortParts(rest);
 
     if (hostIp !== undefined) {
       // Already consumed host IP; remaining parts are [hostPort, containerPort] or [containerPort]
@@ -156,6 +192,42 @@ export function parsePort(entry: unknown): PortMapping | undefined {
   return undefined;
 }
 
+/**
+ * Split a Compose short port mapping on ':' while preserving parameter
+ * expansion defaults such as "${PORT:-8080}:80". A plain `split(":")` breaks
+ * those defaults into "${PORT" and "-8080}", corrupting JSON/MCP exposure data.
+ */
+function splitPortParts(value: string): string[] {
+  const parts: string[] = [];
+  let current = "";
+  let expansionDepth = 0;
+
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i];
+    const next = value[i + 1];
+
+    if (ch === "$" && next === "{") {
+      expansionDepth += 1;
+      current += ch;
+      continue;
+    }
+    if (ch === "}" && expansionDepth > 0) {
+      expansionDepth -= 1;
+      current += ch;
+      continue;
+    }
+    if (ch === ":" && expansionDepth === 0) {
+      parts.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+
+  parts.push(current);
+  return parts;
+}
+
 function parseVolume(entry: unknown): VolumeMount | undefined {
   if (typeof entry === "string") {
     const raw = entry;
@@ -208,13 +280,13 @@ function parseEnvironment(env: unknown): EnvEntry[] {
       } else {
         const key = s.slice(0, eqIdx).trim();
         const value = s.slice(eqIdx + 1);
-        entries.push({ key, value, isReference: isReferenceValue(value) });
+        entries.push(makeEnvEntry(key, value));
       }
     }
   } else if (isRecord(env)) {
     for (const key of Object.keys(env)) {
       const value = coerceString(env[key]);
-      entries.push({ key, value, isReference: isReferenceValue(value) });
+      entries.push(makeEnvEntry(key, value));
     }
   }
   return entries;
@@ -334,6 +406,7 @@ export function parseComposeServices(file: LoadedFile): ComposeService[] {
     }
 
     const expose = parseExpose(node["expose"]);
+    const profiles = parseStringList(node["profiles"]);
 
     // volumes
     const volumes: VolumeMount[] = [];
@@ -358,6 +431,7 @@ export function parseComposeServices(file: LoadedFile): ComposeService[] {
       networkMode,
       ports,
       expose,
+      profiles,
       volumes,
       environment,
       hasHealthcheck,
@@ -406,7 +480,7 @@ export function parseEnvFile(file: LoadedFile): EnvFile {
       }
     }
 
-    entries.push({ key, value, isReference: isReferenceValue(value) });
+    entries.push(makeEnvEntry(key, value));
   }
   return { path: file.path, entries };
 }

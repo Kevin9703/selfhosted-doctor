@@ -24,21 +24,34 @@ const PATH_PROPERTY = {
   description: "Path to a Docker Compose file or a directory containing Compose files.",
 } as const;
 
+const PROFILE_PROPERTIES = {
+  profiles: {
+    type: "array",
+    items: { type: "string" },
+    description:
+      "Optional Compose profiles to score as active. By default only default (non-profile) services affect the risk score.",
+  },
+  all_profiles: {
+    type: "boolean",
+    description: "Score every service, including all profile-gated ones.",
+  },
+} as const;
+
 const TOOLS: Tool[] = [
   {
     name: "scan_compose",
     description:
-      "Scan a Docker Compose file or directory and return the full deterministic security report as JSON (risk score, findings, exposure map, service summaries). Secrets are redacted.",
+      "Scan a Docker Compose file or directory and return the full deterministic security report as JSON (risk score, findings classified active/conditional/template, exposure map, service summaries). Secrets are redacted.",
     inputSchema: {
       type: "object",
-      properties: { path: PATH_PROPERTY },
+      properties: { path: PATH_PROPERTY, ...PROFILE_PROPERTIES },
       required: ["path"],
     },
   },
   {
     name: "list_findings",
     description:
-      "Scan a path and return only the list of security findings, optionally filtered by severity (high | medium | low | info).",
+      "Scan a path and return only the list of security findings, optionally filtered by severity (high | medium | low | info). Each finding carries its classification (active/conditional/template) and any gating profiles.",
     inputSchema: {
       type: "object",
       properties: {
@@ -48,6 +61,7 @@ const TOOLS: Tool[] = [
           enum: ["high", "medium", "low", "info"],
           description: "Optional severity filter.",
         },
+        ...PROFILE_PROPERTIES,
       },
       required: ["path"],
     },
@@ -58,7 +72,7 @@ const TOOLS: Tool[] = [
       "Scan a path and return the exposure map: which services publish which host ports to which interface.",
     inputSchema: {
       type: "object",
-      properties: { path: PATH_PROPERTY },
+      properties: { path: PATH_PROPERTY, ...PROFILE_PROPERTIES },
       required: ["path"],
     },
   },
@@ -67,7 +81,7 @@ const TOOLS: Tool[] = [
     description: "Scan a path and return a human-readable Markdown security report.",
     inputSchema: {
       type: "object",
-      properties: { path: PATH_PROPERTY },
+      properties: { path: PATH_PROPERTY, ...PROFILE_PROPERTIES },
       required: ["path"],
     },
   },
@@ -89,14 +103,24 @@ function requirePath(args: Record<string, unknown> | undefined): string {
   return path;
 }
 
+/** Scan the requested path, honoring optional profile arguments. */
+function scanFromArgs(args: Record<string, unknown> | undefined) {
+  const rawProfiles = args?.["profiles"];
+  const profiles = Array.isArray(rawProfiles)
+    ? rawProfiles.filter((p): p is string => typeof p === "string")
+    : undefined;
+  const allProfiles = args?.["all_profiles"] === true;
+  return scan(requirePath(args), { profiles, allProfiles });
+}
+
 function handleToolCall(name: string, args: Record<string, unknown> | undefined): CallToolResult {
   switch (name) {
     case "scan_compose": {
-      const report = scan(requirePath(args));
+      const report = scanFromArgs(args);
       return textResult(JSON.stringify(report, null, 2));
     }
     case "list_findings": {
-      const report = scan(requirePath(args));
+      const report = scanFromArgs(args);
       const severity = args?.["severity"];
       const findings =
         typeof severity === "string"
@@ -105,11 +129,11 @@ function handleToolCall(name: string, args: Record<string, unknown> | undefined)
       return textResult(JSON.stringify(findings, null, 2));
     }
     case "list_exposed_services": {
-      const report = scan(requirePath(args));
+      const report = scanFromArgs(args);
       return textResult(JSON.stringify(report.exposure, null, 2));
     }
     case "generate_markdown_report": {
-      const report = scan(requirePath(args));
+      const report = scanFromArgs(args);
       return textResult(renderMarkdown(report));
     }
     default:

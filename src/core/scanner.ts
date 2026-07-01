@@ -10,8 +10,10 @@ import { parseCloudflaredConfig } from "./cloudflare";
 import { detectServiceType } from "./services";
 import { runRules } from "./rules";
 import { isPublicPort } from "./rules/util";
+import { classifyFindings, isServiceActive } from "./classify";
+import { scoreActiveFindings } from "./score";
 import {
-  SEVERITY_ORDER,
+  type Classification,
   type CloudflareTunnel,
   type ComposeService,
   type EnvFile,
@@ -21,22 +23,19 @@ import {
   type ScanContext,
   type ServiceSummary,
   type Severity,
+  type SeverityCounts,
 } from "./model";
 
 const TOOL_NAME = "selfhosted-doctor";
-const TOOL_VERSION = "0.1.0";
-
-/** Severity weights used to derive a 0–100 risk score. */
-const SEVERITY_WEIGHT: Record<Severity, number> = {
-  high: 15,
-  medium: 6,
-  low: 2,
-  info: 0,
-};
+const TOOL_VERSION = "0.1.1";
 
 export interface ScanOptions {
   /** ISO timestamp to stamp on the report. Defaults to now. */
   generatedAt?: string;
+  /** Compose profiles to treat as active (score-affecting). */
+  profiles?: string[];
+  /** Score every service, including all profile-gated ones. */
+  allProfiles?: boolean;
 }
 
 /** Build the immutable scan context from an input path (file or directory). */
@@ -71,18 +70,38 @@ function emptyCounts(): Record<Severity, number> {
   return { high: 0, medium: 0, low: 0, info: 0 };
 }
 
-function buildExposure(services: ComposeService[]): ExposureEntry[] {
+/** Count findings by severity, with a total, for a report summary section. */
+function countFindings(findings: Finding[]): SeverityCounts {
+  const counts: SeverityCounts = { high: 0, medium: 0, low: 0, info: 0, total: 0 };
+  for (const finding of findings) {
+    counts[finding.severity] += 1;
+    counts.total += 1;
+  }
+  return counts;
+}
+
+function classificationOf(finding: Finding): Classification {
+  return finding.classification ?? "active";
+}
+
+function buildExposure(services: ComposeService[], opts: ScanOptions = {}): ExposureEntry[] {
   const exposure: ExposureEntry[] = [];
   for (const service of services) {
     for (const port of service.ports) {
       if (!port.published) continue;
-      exposure.push({
+      const entry: ExposureEntry = {
         service: service.name,
         hostIp: port.hostIp && port.hostIp !== "" ? port.hostIp : "0.0.0.0",
         hostPort: port.hostPort && port.hostPort !== "" ? port.hostPort : port.containerPort,
         containerPort: port.containerPort,
         protocol: port.protocol,
-      });
+        classification: "active",
+      };
+      if (!isServiceActive(service, opts)) {
+        entry.classification = "conditional";
+        entry.profiles = [...service.profiles];
+      }
+      exposure.push(entry);
     }
   }
   return exposure;
@@ -111,24 +130,20 @@ function buildServiceSummaries(
   });
 }
 
-function computeRiskScore(counts: Record<Severity, number>): number {
-  let penalty = 0;
-  for (const severity of SEVERITY_ORDER) {
-    penalty += counts[severity] * SEVERITY_WEIGHT[severity];
-  }
-  return Math.max(0, Math.min(100, 100 - penalty));
-}
-
 /** Turn a scan context into a full Report. Exposed for tests. */
 export function buildReport(ctx: ScanContext, opts: ScanOptions = {}): Report {
-  const findings = runRules(ctx);
+  const raw = runRules(ctx);
+  const findings = classifyFindings(raw, ctx, {
+    profiles: opts.profiles,
+    allProfiles: opts.allProfiles,
+  });
 
-  const counts = emptyCounts();
-  for (const finding of findings) {
-    counts[finding.severity] += 1;
-  }
-  const total = findings.length;
-  const riskScore = computeRiskScore(counts);
+  const active = findings.filter((f) => classificationOf(f) === "active");
+  const conditional = findings.filter((f) => classificationOf(f) === "conditional");
+  const template = findings.filter((f) => classificationOf(f) === "template");
+
+  // Score is driven by ACTIVE findings only.
+  const { score, breakdown } = scoreActiveFindings(findings);
 
   return {
     tool: TOOL_NAME,
@@ -137,11 +152,15 @@ export function buildReport(ctx: ScanContext, opts: ScanOptions = {}): Report {
     target: ctx.target,
     files: ctx.files,
     summary: {
-      riskScore,
-      counts: { ...counts, total },
+      riskScore: score,
+      counts: countFindings(findings),
+      active: countFindings(active),
+      conditional: countFindings(conditional),
+      template: countFindings(template),
+      scoreBreakdown: breakdown,
     },
     findings,
-    exposure: buildExposure(ctx.services),
+    exposure: buildExposure(ctx.services, opts),
     services: buildServiceSummaries(ctx.services, findings),
   };
 }

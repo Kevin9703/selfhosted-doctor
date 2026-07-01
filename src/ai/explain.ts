@@ -49,20 +49,22 @@ export function explainReport(report: Report, opts: ExplainOptions = {}): string
     throw new Error(`Unknown AI provider "${provider}". Only "mock" is supported in this version.`);
   }
 
-  const { counts, riskScore } = report.summary;
+  const { active, conditional, template, riskScore } = report.summary;
+  const isActive = (f: (typeof report.findings)[number]): boolean =>
+    (f.classification ?? "active") === "active";
   const lines: string[] = [];
   lines.push(`# What selfhosted-doctor found`);
   lines.push("");
-  lines.push(`Risk score: **${riskScore}/100**. ${scoreVerdict(riskScore)}`);
+  lines.push(`Risk score: **${riskScore}/100** (scored on your active/default stack). ${scoreVerdict(riskScore)}`);
   lines.push("");
   lines.push(
-    `There ${counts.total === 1 ? "is" : "are"} ${counts.total} finding${counts.total === 1 ? "" : "s"}: ` +
-      `${counts.high} high, ${counts.medium} medium, ${counts.low} low, ${counts.info} info.`,
+    `Your active stack has ${active.total} finding${active.total === 1 ? "" : "s"}: ` +
+      `${active.high} high, ${active.medium} medium, ${active.low} low, ${active.info} info.`,
   );
   lines.push("");
 
-  const high = report.findings.filter((f) => f.severity === "high");
-  const medium = report.findings.filter((f) => f.severity === "medium");
+  const high = report.findings.filter((f) => f.severity === "high" && isActive(f));
+  const medium = report.findings.filter((f) => f.severity === "medium" && isActive(f));
 
   if (high.length > 0) {
     lines.push(`## Fix these first (high risk)`);
@@ -79,7 +81,24 @@ export function explainReport(report: Report, opts: ExplainOptions = {}): string
   }
 
   if (high.length === 0 && medium.length === 0) {
-    lines.push(`No high or medium risks were found. Review the lower-severity notes in the full report.`);
+    lines.push(`No high or medium risks were found in your active stack. Review the lower-severity notes in the full report.`);
+    lines.push("");
+  }
+
+  if (conditional.total > 0) {
+    lines.push(
+      `There are also **${conditional.total} conditional finding${conditional.total === 1 ? "" : "s"}** ` +
+        `that apply only if you enable optional Compose profiles. They don't affect the score until you turn those profiles on ` +
+        `(scan with \`--profile <name>\` or \`--all-profiles\` to include them).`,
+    );
+    lines.push("");
+  }
+
+  if (template.total > 0) {
+    lines.push(
+      `And **${template.total} default secret${template.total === 1 ? "" : "s"}** were found in template/example files. ` +
+        `Those are placeholders — change every one before you deploy.`,
+    );
     lines.push("");
   }
 

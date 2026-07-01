@@ -10,6 +10,8 @@ Do not launch a big vague tool. Launch a small memorable check:
 
 AI/MCP is the hook, but deterministic scanning is the product.
 
+Be precise about what the score means: selfhosted-doctor produces a **prioritized local configuration review of your active stack**, not a universal security score or guarantee. Launch copy should frame the risk score as "how safe is my current, default configuration to expose" — not a grade of the software itself.
+
 ## Launch Assets
 
 Before public launch, prepare:

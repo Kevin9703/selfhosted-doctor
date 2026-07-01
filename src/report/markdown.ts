@@ -1,4 +1,4 @@
-import type { Report, Finding } from "../core/model";
+import type { Classification, Finding, Report } from "../core/model";
 
 const SEVERITY_HEADINGS: Record<"high" | "medium" | "low", string> = {
   high: "## High Risk",
@@ -6,9 +6,16 @@ const SEVERITY_HEADINGS: Record<"high" | "medium" | "low", string> = {
   low: "## Low Risk",
 };
 
+function classificationOf(f: Finding): Classification {
+  return f.classification ?? "active";
+}
+
 function findingLine(f: Finding): string {
   const service = f.service ? `**${f.service}** ` : "";
   let line = `- ${service}${f.title} — ${f.detail}`;
+  if (classificationOf(f) === "conditional" && f.profiles && f.profiles.length > 0) {
+    line += ` _(only when profile \`${f.profiles.join("`, `")}\` is enabled)_`;
+  }
   if (f.file) {
     line += ` (source: ${f.file})`;
   }
@@ -18,9 +25,12 @@ function findingLine(f: Finding): string {
   return line;
 }
 
+/** Active findings of a given severity feed the High/Medium/Low sections. */
 function severitySection(report: Report, severity: "high" | "medium" | "low"): string[] {
   const out: string[] = [SEVERITY_HEADINGS[severity], ""];
-  const items = report.findings.filter((f) => f.severity === severity);
+  const items = report.findings.filter(
+    (f) => classificationOf(f) === "active" && f.severity === severity,
+  );
   if (items.length === 0) {
     out.push("_None._");
   } else {
@@ -30,9 +40,27 @@ function severitySection(report: Report, severity: "high" | "medium" | "low"): s
   return out;
 }
 
+function classificationSection(
+  report: Report,
+  classification: "conditional" | "template",
+  heading: string,
+  blurb: string,
+): string[] {
+  const out: string[] = [heading, ""];
+  const items = report.findings.filter((f) => classificationOf(f) === classification);
+  if (items.length === 0) {
+    out.push("_None._");
+  } else {
+    out.push(blurb, "");
+    for (const f of items) out.push(findingLine(f));
+  }
+  out.push("");
+  return out;
+}
+
 export function renderMarkdown(report: Report): string {
   const lines: string[] = [];
-  const counts = report.summary.counts;
+  const { summary } = report;
 
   lines.push("# selfhosted-doctor report");
   lines.push("");
@@ -40,22 +68,45 @@ export function renderMarkdown(report: Report): string {
   // Summary
   lines.push("## Summary");
   lines.push("");
-  lines.push(`- Risk score: ${report.summary.riskScore}/100`);
+  lines.push(`- Risk score: ${summary.riskScore}/100 (scored on active/selected services only)`);
   lines.push(`- Files scanned: ${report.files.length}`);
   if (report.files.length > 0) {
     for (const file of report.files) {
       lines.push(`  - ${file}`);
     }
   }
+  const a = summary.active;
+  const cnd = summary.conditional;
+  const tpl = summary.template;
+  lines.push(`- Active findings: ${a.high} high, ${a.medium} medium, ${a.low} low, ${a.info} info`);
   lines.push(
-    `- Findings: ${counts.high} high, ${counts.medium} medium, ${counts.low} low, ${counts.info} info, ${counts.total} total`,
+    `- Conditional findings (profile-gated, not scored): ${cnd.high} high, ${cnd.medium} medium, ${cnd.low} low`,
   );
+  lines.push(`- Template findings (example/placeholder files): ${tpl.total} info`);
   lines.push("");
 
-  // High / Medium / Low Risk
+  // Active High / Medium / Low Risk
   lines.push(...severitySection(report, "high"));
   lines.push(...severitySection(report, "medium"));
   lines.push(...severitySection(report, "low"));
+
+  // Conditional & Template
+  lines.push(
+    ...classificationSection(
+      report,
+      "conditional",
+      "## Conditional Findings",
+      "These apply only when the named optional Compose profile is enabled. Enable it with `--profile <name>` (or `--all-profiles`) to score it.",
+    ),
+  );
+  lines.push(
+    ...classificationSection(
+      report,
+      "template",
+      "## Template Findings",
+      "Default/placeholder secrets found in example template files. Copy the template to a real `.env`, then change every default before deploying.",
+    ),
+  );
 
   // Exposure Map
   lines.push("## Exposure Map");
@@ -63,11 +114,15 @@ export function renderMarkdown(report: Report): string {
   if (report.exposure.length === 0) {
     lines.push("_No published ports._");
   } else {
-    lines.push("| Service | Host | Container | Protocol |");
-    lines.push("| --- | --- | --- | --- |");
+    lines.push("| Service | Host | Container | Protocol | Applies |");
+    lines.push("| --- | --- | --- | --- | --- |");
     for (const e of report.exposure) {
       const host = e.hostIp && e.hostIp.length > 0 ? e.hostIp : "0.0.0.0";
-      lines.push(`| ${e.service} | ${host}:${e.hostPort} | ${e.containerPort} | ${e.protocol} |`);
+      const applies =
+        e.classification === "conditional" && e.profiles && e.profiles.length > 0
+          ? `profile: ${e.profiles.join(", ")}`
+          : "active";
+      lines.push(`| ${e.service} | ${host}:${e.hostPort} | ${e.containerPort} | ${e.protocol} | ${applies} |`);
     }
   }
   lines.push("");
@@ -90,7 +145,10 @@ export function renderMarkdown(report: Report): string {
       );
     }
   }
-  const infoFindings = report.findings.filter((f) => f.severity === "info");
+  // Active info-level notes (diagnostics, hygiene) — template info lives in its own section.
+  const infoFindings = report.findings.filter(
+    (f) => f.severity === "info" && classificationOf(f) !== "template",
+  );
   if (infoFindings.length > 0) {
     lines.push("");
     for (const f of infoFindings) {

@@ -5,6 +5,8 @@
  */
 export { scan, buildContext, buildReport, type ScanOptions } from "./core/scanner";
 export { runRules, RULES } from "./core/rules";
+export { classifyFindings, isEnvTemplateFile, isServiceActive } from "./core/classify";
+export { scoreActiveFindings } from "./core/score";
 export { renderReport, type ReportFormat } from "./report";
 export { renderTerminal } from "./report/terminal";
 export { renderJson } from "./report/json";
@@ -21,6 +23,9 @@ export type {
   Report,
   Finding,
   Severity,
+  Classification,
+  SeverityCounts,
+  ScoreBucket,
   ScanContext,
   Rule,
   ComposeService,

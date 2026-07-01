@@ -7,6 +7,7 @@ import { rule as hostNetwork } from "./host-network";
 import { rule as dockerSocket } from "./docker-socket";
 import { rule as databasePortExposed } from "./database-port-exposed";
 import { rule as plaintextSecret } from "./plaintext-secret";
+import { rule as defaultSecretFallback } from "./default-secret-fallback";
 import { rule as missingRestart } from "./missing-restart";
 import { rule as missingHealthcheck } from "./missing-healthcheck";
 import { rule as latestTag } from "./latest-tag";
@@ -26,6 +27,7 @@ export const RULES: Rule[] = [
   dockerSocket,
   databasePortExposed,
   plaintextSecret,
+  defaultSecretFallback,
   missingRestart,
   missingHealthcheck,
   latestTag,

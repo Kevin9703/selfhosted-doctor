@@ -1,6 +1,6 @@
 import type { Finding, Rule } from "../model";
 import { isDatabaseService } from "../services";
-import { formatPort, isPublicPort } from "./util";
+import { effectivePort, formatPort, isPublicPort } from "./util";
 
 export const rule: Rule = {
   id: "database-port-exposed",
@@ -16,14 +16,15 @@ export const rule: Rule = {
         if (!isPublicPort(port)) {
           continue;
         }
+        const containerPort = effectivePort(port.containerPort);
         findings.push({
           ruleId: rule.id,
           severity: "high",
-          title: `Database port ${port.containerPort} is published to the public`,
+          title: `Database port ${containerPort} is published to the public`,
           service: service.name,
           file: service.file,
           detail:
-            `Database service "${service.name}" publishes container port ${port.containerPort} on a public host interface, giving attackers a direct path to your data.`,
+            `Database service "${service.name}" publishes container port ${containerPort} on a public host interface, giving attackers a direct path to your data.`,
           recommendation:
             "Bind the database to 127.0.0.1 (e.g. 127.0.0.1:PORT:PORT) or keep it on an internal network only with no published host port.",
           evidence: formatPort(port),

@@ -46,6 +46,16 @@ describe("high-severity rules", () => {
     expect(f[0]).toMatchObject({ severity: "medium" });
   });
 
+  it("exposed-port uses Compose default ports when downgrading proxy ingress", () => {
+    const f = exposedPort.run(
+      ctxFromCompose(
+        `services:\n  proxy:\n    image: nginx:1.27\n    ports:\n      - "\${HOST_HTTP:-80}:\${NGINX_PORT:-80}"\n`,
+      ),
+    );
+    expect(f[0]).toMatchObject({ severity: "medium", title: "Publishes port 80 to the public" });
+    expect(f[0]?.evidence).toContain("${HOST_HTTP:-80}");
+  });
+
   it("privileged / host-network / docker-socket fire", () => {
     expect(privileged.run(ctxFromCompose(`services:\n  a:\n    image: x\n    privileged: true\n`))).toHaveLength(1);
     expect(hostNetwork.run(ctxFromCompose(`services:\n  a:\n    image: x\n    network_mode: host\n`))).toHaveLength(1);

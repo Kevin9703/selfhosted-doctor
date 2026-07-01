@@ -70,6 +70,21 @@ selfhosted-doctor mcp                         # run the read-only MCP server ove
 
 `--fail-on high|medium|low` makes the process exit `1` when a finding at or above that severity exists — handy in a pre-deploy CI step. The default is `none` (always exit `0`).
 
+### Compose profiles
+
+Services behind a Compose `profiles:` key are optional — they only run when you opt into that profile. selfhosted-doctor treats them accordingly:
+
+```bash
+selfhosted-doctor scan ./stack --profile milvus                     # score default + the "milvus" profile
+selfhosted-doctor scan ./stack --profile milvus --profile opengauss # score default + several profiles
+selfhosted-doctor scan ./stack --all-profiles                       # score every service, all profiles on
+```
+
+- `--profile <name>` (repeatable) scores your default services **plus** the named optional profile(s).
+- `--all-profiles` scores every service, including all profile-gated ones.
+
+By default the risk score reflects only your active/default services. Optional services behind Compose `profiles:` are reported as **conditional** and don't affect the score unless you pass `--profile` or `--all-profiles`. This is why a large upstream Compose file (like Dify's, which gates alternate vector DBs behind profiles) no longer collapses to `0/100` just because of services you never actually run.
+
 ## NAS without a Compose file
 
 v0.1 is intentionally **Compose-first**. It scans:
@@ -88,7 +103,7 @@ If your services were created only through a NAS UI, Package Center, app catalog
 
 ## What it checks
 
-The scanner is deterministic — 17 rules across four areas:
+The scanner is deterministic — a set of rules across four areas, including default-secret-fallback detection (`${VAR:-default}` in Compose) and active/conditional/template classification of every finding:
 
 **Exposure & privilege (high)**
 - `exposed-port` — ports published to `0.0.0.0` / an unspecified host
@@ -98,7 +113,8 @@ The scanner is deterministic — 17 rules across four areas:
 - `docker-socket` — `/var/run/docker.sock` mounts
 
 **Secrets (high)**
-- `plaintext-secret` — hardcoded secret values in Compose or `.env` files (values are always redacted)
+- `plaintext-secret` — hardcoded secret values in active `.env` / Compose files (values are always redacted; template files are downgraded to info — see below)
+- `default-secret-fallback` — Compose `${VAR:-default}` fallbacks that ship a known default when the variable is unset
 
 **Image & container hygiene (medium / low)**
 - `latest-tag`, `unpinned-image`, `missing-healthcheck`, `missing-restart`, `runs-as-root`, `no-user`, `missing-resource-limits`, `missing-labels`
@@ -108,6 +124,14 @@ The scanner is deterministic — 17 rules across four areas:
 - `cloudflared-tunnel-to-risky` — a tunnel routing to a sensitive app (e.g. Vaultwarden) without Access
 
 **Service-aware notes** (`service-notes`) add context for Vaultwarden, Immich, Nextcloud, Jellyfin and more — e.g. "your exposed database sits behind Nextcloud" or "back up both the Immich library and its Postgres volume". Detection is image-first, so a `nextcloud_db` container running `mariadb` is correctly identified as a database.
+
+### Why isn't `.env.example` flagged as high severity?
+
+Template and example env files — `.env.example`, `.env.sample`, `.env.template`, and anything under `examples/` — are *expected* to contain placeholder defaults. Flagging them as high-severity plaintext secrets would be noise: they're not your running configuration, they're the starting point you copy from. So selfhosted-doctor reports them as low-priority **info** findings ("change these before you deploy") instead.
+
+Real env files with literal secrets stay high. `.env`, `.env.local`, `.env.production`, and `.env.prod` are treated as active configuration, so a hardcoded secret in one of them still produces a HIGH finding.
+
+Compose fallback defaults **are** flagged high, though. A value like `POSTGRES_PASSWORD: ${DB_PASSWORD:-difyai123456}` means that a self-hoster who never sets `DB_PASSWORD` silently ships the well-known default password — so it's reported as `Default secret fallback in service environment` (HIGH) for active services. A plain `${DB_PASSWORD}` reference with no fallback is not flagged, because nothing is baked in.
 
 ## AI and MCP
 

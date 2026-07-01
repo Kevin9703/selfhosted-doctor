@@ -36,6 +36,18 @@ describe("parsePort", () => {
     expect(parsePort("[::]:8080:80")).toMatchObject({ hostIp: "::", hostPort: "8080", containerPort: "80" });
   });
 
+  it("preserves Compose variable defaults in port mappings", () => {
+    expect(parsePort("${APP_PORT:-8080}:80")).toMatchObject({
+      hostPort: "${APP_PORT:-8080}",
+      containerPort: "80",
+    });
+    expect(parsePort("127.0.0.1:${APP_PORT:-8080}:80")).toMatchObject({
+      hostIp: "127.0.0.1",
+      hostPort: "${APP_PORT:-8080}",
+      containerPort: "80",
+    });
+  });
+
   it("parses long object form", () => {
     expect(parsePort({ target: 80, published: 8080, host_ip: "127.0.0.1", protocol: "tcp" })).toMatchObject({
       containerPort: "80",

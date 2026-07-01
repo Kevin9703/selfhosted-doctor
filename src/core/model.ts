@@ -10,6 +10,17 @@ export type Severity = "high" | "medium" | "low" | "info";
 
 export const SEVERITY_ORDER: Severity[] = ["high", "medium", "low", "info"];
 
+/**
+ * Where a finding applies, so reports can prioritize instead of treating every
+ * finding as equally urgent:
+ *  - "active": applies to the default/running stack (scored)
+ *  - "conditional": only applies when an optional Compose profile is enabled
+ *  - "template": found in a template/example env file (default placeholders)
+ */
+export type Classification = "active" | "conditional" | "template";
+
+export const CLASSIFICATIONS: Classification[] = ["active", "conditional", "template"];
+
 /** A normalized port mapping parsed from Compose short or long syntax. */
 export interface PortMapping {
   /** Original value as written in the Compose file. */
@@ -40,6 +51,12 @@ export interface EnvEntry {
   value: string;
   /** True when the value is a "${VAR}" reference rather than a literal. */
   isReference: boolean;
+  /**
+   * The default baked into a "${VAR:-default}" / "${VAR-default}" fallback, if
+   * any. This is the value a self-hoster silently ships when they never set the
+   * variable — a common source of default-credential risk.
+   */
+  fallbackDefault?: string;
 }
 
 /** A normalized Compose service. */
@@ -53,6 +70,12 @@ export interface ComposeService {
   ports: PortMapping[];
   /** Internal-only ports declared via `expose`. */
   expose: string[];
+  /**
+   * Compose `profiles:` this service belongs to. Empty means the service is
+   * always started (active). A non-empty list means the service only runs when
+   * one of these profiles is enabled — its findings are conditional.
+   */
+  profiles: string[];
   volumes: VolumeMount[];
   environment: EnvEntry[];
   hasHealthcheck: boolean;
@@ -108,6 +131,16 @@ export interface Finding {
   recommendation?: string;
   /** Redacted evidence string. Never contains raw secret values. */
   evidence?: string;
+  /**
+   * Where this finding applies. Set by the classification pass; rules may leave
+   * it undefined (treated as "active"). Reports and scoring key off this.
+   */
+  classification?: Classification;
+  /**
+   * When `classification` is "conditional", the Compose profile(s) that must be
+   * enabled for the finding's service to run.
+   */
+  profiles?: string[];
 }
 
 /** One published-port entry for the exposure map. */
@@ -117,6 +150,10 @@ export interface ExposureEntry {
   hostPort: string;
   containerPort: string;
   protocol: string;
+  /** Whether this exposure applies to the active/default stack or a profile. */
+  classification?: Classification;
+  /** Required profiles when the exposure is conditional. */
+  profiles?: string[];
 }
 
 /** Per-service summary shown in reports. */
@@ -129,9 +166,29 @@ export interface ServiceSummary {
   findingCounts: Record<Severity, number>;
 }
 
+/** Severity counts plus a total. */
+export type SeverityCounts = Record<Severity, number> & { total: number };
+
+/** One capped scoring bucket's contribution to the penalty. */
+export interface ScoreBucket {
+  bucket: string;
+  penalty: number;
+  cap: number;
+}
+
 export interface ReportSummary {
+  /** 0–100, computed from ACTIVE findings only (higher is safer). */
   riskScore: number;
-  counts: Record<Severity, number> & { total: number };
+  /** Counts across ALL findings, regardless of classification. */
+  counts: SeverityCounts;
+  /** Counts of active findings (these drive the score). */
+  active: SeverityCounts;
+  /** Counts of conditional (profile-gated) findings. */
+  conditional: SeverityCounts;
+  /** Counts of template/example findings. */
+  template: SeverityCounts;
+  /** Per-bucket penalty breakdown behind the score (active findings only). */
+  scoreBreakdown: ScoreBucket[];
 }
 
 /**
