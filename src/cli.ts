@@ -11,7 +11,8 @@
 import { writeFileSync, readFileSync } from "node:fs";
 import { Command } from "commander";
 import pc from "picocolors";
-import { scan } from "./core/scanner";
+import { scan, scanContainers } from "./core/scanner";
+import { collectRunningContainers, RUNNING_TARGET } from "./core/docker-cli";
 import { renderReport, type ReportFormat } from "./report";
 import { renderExpose } from "./report/expose";
 import { assessExposure } from "./core/verdict";
@@ -19,7 +20,7 @@ import { explainReport, type ExplainProvider } from "./ai/explain";
 import { runMcpServer } from "./mcp/server";
 import type { Report, Severity } from "./core/model";
 
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 const SEVERITIES: Severity[] = ["high", "medium", "low", "info"];
 
 function inferFormat(output: string | undefined, explicit: string | undefined): ReportFormat {
@@ -50,13 +51,37 @@ interface ScanFlags {
   failOn: string;
   profile?: string[];
   allProfiles?: boolean;
+  running?: boolean;
+}
+
+/**
+ * Produce a Report from either a path (Compose file / directory / docker-inspect
+ * JSON, auto-detected) or, with `--running`, from the local Docker daemon via
+ * read-only `docker ps` + `docker inspect`. When `--running` finds no
+ * containers, prints a friendly note and exits 0 (never returns).
+ */
+function loadReport(
+  pathArg: string | undefined,
+  flags: { profile?: string[]; allProfiles?: boolean; running?: boolean },
+): Report {
+  const opts = { profiles: flags.profile, allProfiles: flags.allProfiles };
+  if (flags.running) {
+    const containers = collectRunningContainers();
+    if (containers.length === 0) {
+      process.stderr.write(
+        pc.yellow("No running containers found (`docker ps -q` returned nothing). Nothing to scan.\n"),
+      );
+      process.exit(0);
+    }
+    return scanContainers(containers, RUNNING_TARGET, opts);
+  }
+  return scan(pathArg ?? ".", opts);
 }
 
 function runScan(pathArg: string | undefined, flags: ScanFlags): void {
-  const target = pathArg ?? ".";
   let report: Report;
   try {
-    report = scan(target, { profiles: flags.profile, allProfiles: flags.allProfiles });
+    report = loadReport(pathArg, flags);
   } catch (err) {
     process.stderr.write(pc.red(`Error: ${err instanceof Error ? err.message : String(err)}\n`));
     process.exit(2);
@@ -83,13 +108,13 @@ interface ExposeFlags {
   color?: boolean;
   profile?: string[];
   allProfiles?: boolean;
+  running?: boolean;
 }
 
 function runExpose(pathArg: string | undefined, flags: ExposeFlags): void {
-  const target = pathArg ?? ".";
   let report: Report;
   try {
-    report = scan(target, { profiles: flags.profile, allProfiles: flags.allProfiles });
+    report = loadReport(pathArg, flags);
   } catch (err) {
     process.stderr.write(pc.red(`Error: ${err instanceof Error ? err.message : String(err)}\n`));
     process.exit(2);
@@ -139,10 +164,14 @@ program
 
 program
   .command("scan", { isDefault: true })
-  .description("Scan a Compose file or directory for homelab security risks.")
-  .argument("[path]", "Compose file or directory to scan", ".")
+  .description("Scan a Compose file, directory, or docker-inspect JSON for homelab security risks.")
+  .argument("[path]", "Compose file, directory, or `docker inspect` JSON to scan", ".")
   .option("-f, --format <format>", "Output format: terminal | json | markdown")
   .option("-o, --output <file>", "Write the report to a file instead of stdout")
+  .option(
+    "--running",
+    "Scan already-running containers via read-only `docker ps` + `docker inspect` (never mutates)",
+  )
   .option("--no-color", "Disable colored terminal output")
   .option(
     "--profile <name>",
@@ -166,7 +195,11 @@ program
 program
   .command("expose")
   .description("Answer \"can I safely expose this to the internet?\" with a verdict and a short fix list.")
-  .argument("[path]", "Compose file or directory to assess", ".")
+  .argument("[path]", "Compose file, directory, or `docker inspect` JSON to assess", ".")
+  .option(
+    "--running",
+    "Assess already-running containers via read-only `docker ps` + `docker inspect` (never mutates)",
+  )
   .option("--no-color", "Disable colored terminal output")
   .option(
     "--profile <name>",

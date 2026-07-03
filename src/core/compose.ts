@@ -37,7 +37,7 @@ function extractFallbackDefault(value: string): string | undefined {
 }
 
 /** Build an EnvEntry, capturing reference/fallback-default metadata. */
-function makeEnvEntry(key: string, value: string): EnvEntry {
+export function makeEnvEntry(key: string, value: string): EnvEntry {
   const entry: EnvEntry = {
     key,
     value,

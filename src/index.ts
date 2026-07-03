@@ -3,7 +3,23 @@
  *
  * Programmatic users can `import { scan, renderReport } from "selfhosted-doctor"`.
  */
-export { scan, buildContext, buildReport, type ScanOptions } from "./core/scanner";
+export {
+  scan,
+  scanContainers,
+  buildContext,
+  buildContextFromContainers,
+  buildReport,
+  type ScanOptions,
+} from "./core/scanner";
+export {
+  containersToServices,
+  containerToService,
+  looksLikeDockerInspect,
+  parseDockerInspectText,
+  maybeLoadDockerInspectFile,
+  type DockerInspectContainer,
+} from "./core/docker-inspect";
+export { collectRunningContainers, RUNNING_TARGET } from "./core/docker-cli";
 export { runRules, RULES } from "./core/rules";
 export { classifyFindings, isEnvTemplateFile, isServiceActive } from "./core/classify";
 export { scoreActiveFindings } from "./core/score";

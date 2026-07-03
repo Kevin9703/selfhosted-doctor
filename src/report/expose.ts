@@ -79,7 +79,7 @@ export function renderExpose(a: ExposeAssessment, opts?: { color?: boolean }): s
   lines.push("");
   lines.push(pad + topLine(c, a));
   lines.push(
-    pad + c.dim("(reachable if this host has a public IP or a forwarded port — derived from the compose file, not probed)"),
+    pad + c.dim("(reachable if this host has a public IP or a forwarded port — inferred from your config, not probed)"),
   );
 
   // Verdict banner.

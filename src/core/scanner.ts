@@ -6,6 +6,11 @@
  */
 import { loadInputs } from "./loader";
 import { parseComposeServices, parseEnvFile } from "./compose";
+import {
+  maybeLoadDockerInspectFile,
+  containersToServices,
+  type DockerInspectContainer,
+} from "./docker-inspect";
 import { parseCloudflaredConfig } from "./cloudflare";
 import { detectServiceType } from "./services";
 import { runRules } from "./rules";
@@ -27,7 +32,7 @@ import {
 } from "./model";
 
 const TOOL_NAME = "selfhosted-doctor";
-const TOOL_VERSION = "0.2.0";
+const TOOL_VERSION = "0.3.0";
 
 export interface ScanOptions {
   /** ISO timestamp to stamp on the report. Defaults to now. */
@@ -38,8 +43,40 @@ export interface ScanOptions {
   allProfiles?: boolean;
 }
 
-/** Build the immutable scan context from an input path (file or directory). */
+/**
+ * Build a scan context from parsed `docker inspect` containers (a running-stack
+ * inventory). Feeds the SAME model the Compose parser produces, so rules /
+ * scoring / verdict are unchanged. There are no env files or tunnels to discover
+ * from a container inventory.
+ */
+export function buildContextFromContainers(
+  containers: DockerInspectContainer[],
+  target: string,
+): ScanContext {
+  const services = containersToServices(containers, target);
+  return {
+    target,
+    files: [target],
+    services,
+    envFiles: [],
+    tunnels: [],
+  };
+}
+
+/**
+ * Build the immutable scan context from an input path (file or directory).
+ *
+ * A file is auto-detected: if it is JSON shaped like `docker inspect` output
+ * (an array of container objects) it is parsed as a running-container inventory;
+ * otherwise it is parsed as Compose YAML as before. A directory always stays
+ * Compose discovery.
+ */
 export function buildContext(inputPath: string): ScanContext {
+  const containers = maybeLoadDockerInspectFile(inputPath);
+  if (containers) {
+    return buildContextFromContainers(containers, inputPath);
+  }
+
   const { target, files } = loadInputs(inputPath);
 
   const services: ComposeService[] = [];
@@ -169,4 +206,17 @@ export function buildReport(ctx: ScanContext, opts: ScanOptions = {}): Report {
 export function scan(inputPath: string, opts: ScanOptions = {}): Report {
   const ctx = buildContext(inputPath);
   return buildReport(ctx, opts);
+}
+
+/**
+ * Scan already-inspected containers (no Compose file) and return a deterministic
+ * Report. Used by the `--running` path after the read-only Docker CLI collects
+ * the inventory.
+ */
+export function scanContainers(
+  containers: DockerInspectContainer[],
+  target: string,
+  opts: ScanOptions = {},
+): Report {
+  return buildReport(buildContextFromContainers(containers, target), opts);
 }

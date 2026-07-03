@@ -1,0 +1,37 @@
+[
+  {
+    "Id": "999888777666999888777666999888777666999888777666999888777666bbbb",
+    "Name": "/sdtest-web",
+    "Config": {
+      "Image": "nginx:1.27-alpine",
+      "Env": [
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "NGINX_VERSION=1.27.0"
+      ],
+      "User": "101:101",
+      "Healthcheck": {
+        "Test": ["CMD-SHELL", "curl -f http://localhost/ || exit 1"]
+      },
+      "Labels": {
+        "com.example.role": "frontend"
+      }
+    },
+    "HostConfig": {
+      "Privileged": false,
+      "NetworkMode": "bridge",
+      "RestartPolicy": { "Name": "unless-stopped" },
+      "PortBindings": {
+        "80/tcp": [{ "HostIp": "127.0.0.1", "HostPort": "8080" }]
+      },
+      "Binds": null,
+      "Memory": 134217728,
+      "NanoCpus": 0
+    },
+    "Mounts": [],
+    "NetworkSettings": {
+      "Ports": {
+        "80/tcp": [{ "HostIp": "127.0.0.1", "HostPort": "8080" }]
+      }
+    }
+  }
+]

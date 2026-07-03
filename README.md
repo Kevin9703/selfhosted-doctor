@@ -34,7 +34,7 @@ npx selfhosted-doctor expose docker-compose.yml
 
 That's a full upstream Dify stack — 30-plus services — and instead of a wall of red, you get **one thing that's genuinely dangerous, the exact line to change, and a clear verdict.** Fix it, re-run, and the verdict flips when it's safe.
 
-It's local-first and read-only: it parses your files, never touches the Docker daemon, never calls the Cloudflare API, never changes anything. It's not trying to replace Trivy or Checkov — it catches the specific mistakes that bite self-hosters in the moment right before a private service becomes public.
+It's local-first and strictly read-only: it parses your files (and, optionally, reads live container config via read-only `docker inspect`), never calls the Cloudflare API, and **never changes anything**. It's not trying to replace Trivy or Checkov — it catches the specific mistakes that bite self-hosters in the moment right before a private service becomes public.
 
 ## Two commands
 
@@ -65,7 +65,7 @@ selfhosted-doctor explain [path]              # plain-language explanation of th
 selfhosted-doctor mcp                         # run the read-only MCP server over stdio
 ```
 
-`path` can be a Compose file (`docker-compose.yml`, `compose.yml`) or a directory. When you point it at a single file, sibling `.env` and `cloudflared` config files in the same folder are scanned too. `--fail-on high|medium|low` makes `scan` exit `1` when a finding at or above that severity exists; the default is `none`.
+`path` can be a Compose file (`docker-compose.yml`, `compose.yml`), a directory, or a `docker inspect` JSON export (auto-detected — see [Scanning already-running containers](#scanning-already-running-containers-no-compose-file)). When you point it at a single Compose file, sibling `.env` and `cloudflared` config files in the same folder are scanned too. `--fail-on high|medium|low` makes `scan` exit `1` when a finding at or above that severity exists; the default is `none`.
 
 ### Compose profiles
 
@@ -82,21 +82,51 @@ selfhosted-doctor scan ./stack --all-profiles                       # score ever
 
 By default the risk score reflects only your active/default services. Optional services behind Compose `profiles:` are reported as **conditional** and don't affect the score unless you pass `--profile` or `--all-profiles`. This is why a large upstream Compose file (like Dify's, which gates alternate vector DBs behind profiles) no longer collapses to `0/100` just because of services you never actually run.
 
-## NAS without a Compose file
+## Scanning already-running containers (no Compose file)
 
-selfhosted-doctor is currently **Compose-first**. It scans:
+Most real NAS / homelab services have **no Compose file** — they were started from a NAS UI, Portainer, or a raw `docker run`. selfhosted-doctor can scan those too, by reading Docker's own `docker inspect` output. Both `expose` and `scan` accept it, and the input is **auto-detected** — no flag needed. The container config feeds the exact same model, rules, and verdict as a Compose file.
+
+It stays 100% read-only: it only ever *reads* live container config via `docker ps` / `docker inspect`. It never creates, stops, removes, or changes anything.
+
+### The NAS recipe: export once, scan the file
+
+On the box where the containers run, dump every running container to a file, then scan that file (from anywhere):
+
+```bash
+docker inspect $(docker ps -q) > containers.json
+npx selfhosted-doctor expose containers.json
+```
+
+`docker inspect $(docker ps -q)` produces a JSON array of every running container. selfhosted-doctor detects that shape automatically and maps each container to a service (published ports, env, privileged, host network, Docker-socket mounts, restart policy, healthcheck, user). This is the recommended path for a NAS: the export is a single read-only command, and the file can be scanned on a laptop, in CI, or fed to the MCP server.
+
+Because these are the **real, resolved** values of running containers, a secret in a container's environment is a live secret — it's flagged (always redacted), not treated as a template placeholder.
+
+### `--running`: scan the local daemon directly
+
+If the machine has both the Docker CLI and Node, skip the export and let the tool run the read-only `docker ps` + `docker inspect` for you:
+
+```bash
+selfhosted-doctor expose --running
+selfhosted-doctor scan   --running
+```
+
+If the Docker CLI is missing or the daemon isn't reachable, it prints a clear message (and points you at the `docker inspect > file.json` recipe above) instead of a stack trace.
+
+### Still Compose-first for files on disk
+
+Pointed at a path, selfhosted-doctor still scans Compose stacks exactly as before:
 
 - `docker-compose.yml`, `docker-compose.yaml`, `compose.yml`, and `compose.yaml`
 - sibling `.env` / `.env.*` files
 - Cloudflare Tunnel config near the stack
 
-Many NAS setups do not have a Compose file in the obvious place. If you use Portainer, Dockge, Synology Container Manager projects, or a copied stack from another machine, look for the exported stack/compose YAML and scan that folder:
+If you use Portainer, Dockge, or Synology Container Manager and can find the exported stack/compose YAML, scan that folder directly:
 
 ```bash
 npx selfhosted-doctor scan /path/to/exported-stack
 ```
 
-If your services were created only through a NAS UI, Package Center, app catalog, or raw `docker run`, this version will not fully understand them yet. Runtime inventory support (`docker ps` / `docker inspect` export, still read-only) is the next product direction.
+> Note on running containers: there is no Compose `profiles:` concept for a live container, so every running container is treated as active. The `${VAR:-default}` fallback check also won't fire on inspected containers — their env is already resolved — which is expected.
 
 ## What it checks
 
@@ -186,9 +216,9 @@ The pipeline is `load files → parse Compose into a normalized model → run ru
 Docker Compose stack -> deterministic scan -> exposure verdict (expose) + full report (scan, +AI explain, +MCP)
 ```
 
-Deliberately out of scope: no automatic fixes, no Docker daemon access, no Cloudflare API calls, no live internet scanning, no Web UI. Every command reads local files and changes nothing.
+Deliberately out of scope: no automatic fixes, no mutating Docker commands, no Cloudflare API calls, no live internet scanning, no Web UI. Docker access is **read-only inspect only** (`docker ps` / `docker inspect`) — the tool never creates, stops, removes, or changes any container, image, or config. Every command changes nothing.
 
-Next direction: read-only runtime inventory (`docker ps` / `docker inspect` export) for NAS users who don't have a Compose file, and a real-probe mode that confirms which entry points are actually reachable from outside.
+Next direction: a real-probe mode that confirms which entry points are actually reachable from outside.
 
 ## Disclaimer
 

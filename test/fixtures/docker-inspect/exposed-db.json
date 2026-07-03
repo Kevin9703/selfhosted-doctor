@@ -1,0 +1,43 @@
+[
+  {
+    "Id": "abc123def456abc123def456abc123def456abc123def456abc123def4560001",
+    "Name": "/sdtest-db",
+    "Config": {
+      "Image": "postgres:16-alpine",
+      "Env": [
+        "POSTGRES_PASSWORD=hunter2superSecret",
+        "POSTGRES_USER=app",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "PG_MAJOR=16",
+        "PG_VERSION=16.3"
+      ],
+      "User": "",
+      "Labels": {}
+    },
+    "HostConfig": {
+      "Privileged": false,
+      "NetworkMode": "bridge",
+      "RestartPolicy": { "Name": "no" },
+      "PortBindings": {
+        "5432/tcp": [{ "HostIp": "0.0.0.0", "HostPort": "5432" }]
+      },
+      "Binds": null,
+      "Memory": 0,
+      "NanoCpus": 0
+    },
+    "Mounts": [
+      {
+        "Type": "volume",
+        "Source": "/var/lib/docker/volumes/pgdata/_data",
+        "Destination": "/var/lib/postgresql/data",
+        "Mode": "z",
+        "RW": true
+      }
+    ],
+    "NetworkSettings": {
+      "Ports": {
+        "5432/tcp": [{ "HostIp": "0.0.0.0", "HostPort": "5432" }]
+      }
+    }
+  }
+]
