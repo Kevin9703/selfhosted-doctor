@@ -23,11 +23,29 @@ export const SECRET_KEY_KEYWORDS: string[] = [
   "AUTH",
 ];
 
+/**
+ * Suffixes that describe *configuration about* auth/tokens rather than the
+ * secret value itself, e.g. AUTH_TYPE="public", TOKEN_METHOD="jwt",
+ * SSO_PROVIDERS="google". Excluding these avoids flagging config enums as
+ * secrets (a real credential is never named `*_TYPE`).
+ */
+const NON_SECRET_KEY_SUFFIXES: string[] = [
+  "_FILE", // points at a file path (e.g. DB_PASSWORD_FILE), not a value
+  "_TYPE",
+  "_METHOD",
+  "_MODE",
+  "_ENABLED",
+  "_DISABLED",
+  "_PROVIDER",
+  "_PROVIDERS",
+  "_ALGORITHM",
+  "_STRATEGY",
+];
+
 /** Case-insensitive: does the env KEY name look like it holds a secret? */
 export function isSecretKey(key: string): boolean {
   const upper = key.toUpperCase();
-  // A "_FILE" suffix points at a file path (e.g. DB_PASSWORD_FILE), not a value.
-  if (upper.endsWith("_FILE")) {
+  if (NON_SECRET_KEY_SUFFIXES.some((suffix) => upper.endsWith(suffix))) {
     return false;
   }
   return SECRET_KEY_KEYWORDS.some((keyword) => upper.includes(keyword));
@@ -47,9 +65,10 @@ export function looksLikeSecretValue(value: string): boolean {
   if (v.length < 4) {
     return false;
   }
-  // Obvious non-secrets: pure booleans / yes-no / all-digit values.
+  // Obvious non-secrets: config enums / booleans / all-digit values. A real
+  // credential is never literally "public" or "default".
   const lower = v.toLowerCase();
-  if (lower === "true" || lower === "false" || lower === "yes" || lower === "no") {
+  if (NON_SECRET_VALUES.has(lower)) {
     return false;
   }
   if (/^\d+$/.test(v)) {
@@ -57,6 +76,32 @@ export function looksLikeSecretValue(value: string): boolean {
   }
   return true;
 }
+
+/** Literal values that are config enums, never real secrets. */
+const NON_SECRET_VALUES: Set<string> = new Set([
+  "true",
+  "false",
+  "yes",
+  "no",
+  "on",
+  "off",
+  "none",
+  "null",
+  "nil",
+  "undefined",
+  "public",
+  "private",
+  "internal",
+  "external",
+  "local",
+  "default",
+  "auto",
+  "enabled",
+  "disabled",
+  "development",
+  "production",
+  "staging",
+]);
 
 /** Redact a secret value for safe display. Must NEVER return the original value. */
 export function redactValue(_value: string): string {

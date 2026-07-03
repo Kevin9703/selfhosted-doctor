@@ -1,63 +1,62 @@
 # selfhosted-doctor
 
-AI-ready security checks for self-hosted homelabs, starting with Docker Compose.
+**Before you open a self-hosted app to the internet, know if it's safe — and what to fix first.**
 
-> Before exposing your NAS to the internet, run one command.
+You've got a stack running on your NAS or homelab. It works. Now you want to reach it from outside — a Cloudflare Tunnel, a port forward, a domain. That's the scary moment: *is anything reachable that shouldn't be?*
 
-`selfhosted-doctor` is a local-first security doctor for people who run services on a NAS, VPS, or homelab with Docker Compose, reverse proxies, and Cloudflare Tunnel.
-
-The goal is not to replace Trivy, Checkov, or enterprise security scanners. The goal is to catch the common self-hosted mistakes that happen right before a private service becomes public.
-
-![selfhosted-doctor terminal report](docs/assets/readme-terminal.svg)
-
-## Quickstart
+`selfhosted-doctor` reads your Docker Compose stack and answers one question in plain language:
 
 ```bash
-npx selfhosted-doctor scan docker-compose.yml
+npx selfhosted-doctor expose docker-compose.yml
 ```
-
-Scan a whole directory (finds every `docker-compose*.yml` / `compose*.yml`, `.env`, and `cloudflared` config):
-
-```bash
-npx selfhosted-doctor scan ./my-stack
-```
-
-Example output:
 
 ```text
-selfhosted-doctor report
+  Dify · 2 entry points reachable from the internet (nginx 80/443, plugin_daemon 5003)
+  (reachable if this host has a public IP or a forwarded port — derived from the compose file, not probed)
 
-Risk score: 56/100
-Files scanned: 3
-Findings: 2 high, 2 medium, 1 low
+  ⛔  DON'T EXPOSE YET
 
-High
-- db: Database port 5432 is published to the public (docker-compose.yml)
-- Cloudflare Tunnel routes to a sensitive service without Access (cloudflared/config.yml)
+  Genuinely dangerous — 1 thing:
+  ●  plugin_daemon port 5003 is published to 0.0.0.0
+     Anyone on the internet could reach plugin_daemon directly.
+     Fix:  "5003:5003"  →  "127.0.0.1:5003:5003"
 
-Medium
-- Cloudflare Tunnel has no Access policy (cloudflared/config.yml)
-- vaultwarden: Has no healthcheck (docker-compose.yml)
+  Also handle before going public:
+  ○  nginx is your front door (publishes 80/443) — no access control detected in front of it
+     → put it behind Cloudflare Access, a VPN, or an auth proxy
+  ○  5 internal services fall back to built-in default secrets (4 shared keys)
+     Fine on a private network; MUST be changed if this host is on the internet.
 
-Low
-- db: Image is not pinned by digest (docker-compose.yml)
+  20 hygiene items (healthchecks, unpinned images, restart policies) won't get you hacked — run `scan` for the full list.
 
-Exposure
-- db: 0.0.0.0:5432 -> container:5432 (tcp)
+  Fix the items above, then run `expose` again.
 ```
 
-Every finding comes with a concrete fix. Run `-f markdown` (or `selfhosted-doctor explain`) to get the **Suggested Fixes** section:
+That's a full upstream Dify stack — 30-plus services — and instead of a wall of red, you get **one thing that's genuinely dangerous, the exact line to change, and a clear verdict.** Fix it, re-run, and the verdict flips when it's safe.
 
-```text
-- Bind the database to localhost only (e.g. 127.0.0.1:5432:5432) or keep it on an internal network.
-- Protect sensitive apps with a Cloudflare Access policy and MFA before tunneling them to the public internet.
-- Add a healthcheck so the container is restarted when it becomes unhealthy.
-```
+It's local-first and read-only: it parses your files, never touches the Docker daemon, never calls the Cloudflare API, never changes anything. It's not trying to replace Trivy or Checkov — it catches the specific mistakes that bite self-hosters in the moment right before a private service becomes public.
 
-## Commands
+## Two commands
 
 ```bash
-selfhosted-doctor scan [path]                 # terminal report (default command)
+selfhosted-doctor expose ./my-stack   # the decision: can I open this to the internet, and what do I fix first?
+selfhosted-doctor scan   ./my-stack   # the full report: every finding, scored, for detail / CI / AI
+```
+
+**`expose`** is the one you reach for. It gives a single verdict —
+
+| Verdict | Meaning |
+|---|---|
+| ⛔ **DON'T EXPOSE YET** | Something genuinely dangerous is reachable (public database, debug/admin port, a real hardcoded secret, Docker socket, privileged). Fix it first. |
+| 🔐 **EXPOSE ONLY BEHIND ACCESS** | No hard blockers, but a public service has no access control detected — put it behind Cloudflare Access / a VPN / an auth proxy. |
+| 🔎 **CHECK MANUALLY** | A port the tool couldn't resolve statically — decide for yourself. |
+| ✅ **LOOKS OK TO EXPOSE** | No active blockers; only hygiene left. |
+
+— then the blockers (grouped per service, capped to what matters), the "handle before public" items, a one-line hygiene summary, and a note of what changes if you enable optional Compose profiles. It exits `1` on **DON'T EXPOSE YET**, so you can drop it into a pre-deploy check.
+
+**`scan`** is the exhaustive view — every finding by severity, a risk score, and `-f json` / `-f markdown` output for CI, MCP, and AI.
+
+```bash
 selfhosted-doctor scan [path] -f json         # machine-readable JSON (AI-ready)
 selfhosted-doctor scan [path] -f markdown     # Markdown report
 selfhosted-doctor scan [path] -o report.md    # write to a file (format inferred from extension)
@@ -66,9 +65,7 @@ selfhosted-doctor explain [path]              # plain-language explanation of th
 selfhosted-doctor mcp                         # run the read-only MCP server over stdio
 ```
 
-`path` can be a Compose file (`docker-compose.yml`, `compose.yml`) or a directory. When you point it at a single file, sibling `.env` and `cloudflared` config files in the same folder are scanned too.
-
-`--fail-on high|medium|low` makes the process exit `1` when a finding at or above that severity exists — handy in a pre-deploy CI step. The default is `none` (always exit `0`).
+`path` can be a Compose file (`docker-compose.yml`, `compose.yml`) or a directory. When you point it at a single file, sibling `.env` and `cloudflared` config files in the same folder are scanned too. `--fail-on high|medium|low` makes `scan` exit `1` when a finding at or above that severity exists; the default is `none`.
 
 ### Compose profiles
 
@@ -87,7 +84,7 @@ By default the risk score reflects only your active/default services. Optional s
 
 ## NAS without a Compose file
 
-v0.1 is intentionally **Compose-first**. It scans:
+selfhosted-doctor is currently **Compose-first**. It scans:
 
 - `docker-compose.yml`, `docker-compose.yaml`, `compose.yml`, and `compose.yaml`
 - sibling `.env` / `.env.*` files
@@ -169,7 +166,7 @@ Three intentionally-imperfect stacks live in [`examples/`](examples/) and double
 - `nextcloud-db` — Nextcloud + MariaDB + Traefik + Watchtower (docker socket, privileged, host network)
 
 ```bash
-npx selfhosted-doctor scan examples/vaultwarden-cloudflare
+npx selfhosted-doctor expose examples/vaultwarden-cloudflare
 ```
 
 ## Development
@@ -183,15 +180,15 @@ npm run scan -- examples/nextcloud-db   # run the CLI from source
 
 The pipeline is `load files → parse Compose into a normalized model → run rules → assemble a Report → render`. Rules live in `src/core/rules/` (one file each) and are the only producers of findings; reporters, MCP, and AI all consume the same `Report` object. See [`docs/implementation-notes.md`](docs/implementation-notes.md) for design decisions, tradeoffs, and the roadmap.
 
-## MVP scope
+## Scope
 
 ```text
-Docker Compose file -> deterministic scan -> terminal / JSON / Markdown report (+ AI explain, + MCP)
+Docker Compose stack -> deterministic scan -> exposure verdict (expose) + full report (scan, +AI explain, +MCP)
 ```
 
-Out of scope for v0.1: no automatic fixes, no Docker daemon access, no Cloudflare API calls, no public internet scanning, no Web UI.
+Deliberately out of scope: no automatic fixes, no Docker daemon access, no Cloudflare API calls, no live internet scanning, no Web UI. Every command reads local files and changes nothing.
 
-Next after v0.1: read-only runtime inventory for NAS users who do not have Compose files.
+Next direction: read-only runtime inventory (`docker ps` / `docker inspect` export) for NAS users who don't have a Compose file, and a real-probe mode that confirms which entry points are actually reachable from outside.
 
 ## Disclaimer
 

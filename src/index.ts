@@ -9,6 +9,16 @@ export { classifyFindings, isEnvTemplateFile, isServiceActive } from "./core/cla
 export { scoreActiveFindings } from "./core/score";
 export { renderReport, type ReportFormat } from "./report";
 export { renderTerminal } from "./report/terminal";
+export { renderExpose } from "./report/expose";
+export {
+  assessExposure,
+  decideVerdict,
+  labelFromPath,
+  type Verdict,
+  type ExposeAssessment,
+  type ExposeItem,
+  type EntryPoint,
+} from "./core/verdict";
 export { renderJson } from "./report/json";
 export { renderMarkdown } from "./report/markdown";
 export {

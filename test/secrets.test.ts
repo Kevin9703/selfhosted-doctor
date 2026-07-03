@@ -18,6 +18,16 @@ describe("isSecretKey", () => {
       expect(isSecretKey(k)).toBe(false);
     }
   });
+
+  it("does not match config-about-auth keys (type/method/provider), only the secret itself", () => {
+    // These describe *how* auth works, not the credential value.
+    for (const k of ["MINIO_PROMETHEUS_AUTH_TYPE", "TOKEN_METHOD", "AUTH_MODE", "NEXT_AUTH_SSO_PROVIDERS", "JWT_ALGORITHM"]) {
+      expect(isSecretKey(k)).toBe(false);
+    }
+    // ...but the real credential next to them still matches.
+    expect(isSecretKey("AUTH_TOKEN")).toBe(true);
+    expect(isSecretKey("AUTH_CASDOOR_SECRET")).toBe(true);
+  });
 });
 
 describe("looksLikeSecretValue", () => {
@@ -32,6 +42,12 @@ describe("looksLikeSecretValue", () => {
     expect(looksLikeSecretValue("")).toBe(false);
     expect(looksLikeSecretValue("123")).toBe(false);
     expect(looksLikeSecretValue("true")).toBe(false);
+  });
+
+  it("ignores config enum literals that are never real secrets", () => {
+    for (const v of ["public", "private", "none", "internal", "default", "disabled", "production"]) {
+      expect(looksLikeSecretValue(v)).toBe(false);
+    }
   });
 });
 

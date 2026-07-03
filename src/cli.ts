@@ -4,6 +4,7 @@
  *
  *   selfhosted-doctor scan [path]
  *   selfhosted-doctor scan [path] --format markdown --output report.md
+ *   selfhosted-doctor expose [path]
  *   selfhosted-doctor explain <report.json|path> --provider mock
  *   selfhosted-doctor mcp
  */
@@ -12,11 +13,13 @@ import { Command } from "commander";
 import pc from "picocolors";
 import { scan } from "./core/scanner";
 import { renderReport, type ReportFormat } from "./report";
+import { renderExpose } from "./report/expose";
+import { assessExposure } from "./core/verdict";
 import { explainReport, type ExplainProvider } from "./ai/explain";
 import { runMcpServer } from "./mcp/server";
 import type { Report, Severity } from "./core/model";
 
-const VERSION = "0.1.1";
+const VERSION = "0.2.0";
 const SEVERITIES: Severity[] = ["high", "medium", "low", "info"];
 
 function inferFormat(output: string | undefined, explicit: string | undefined): ReportFormat {
@@ -76,6 +79,33 @@ function runScan(pathArg: string | undefined, flags: ScanFlags): void {
   }
 }
 
+interface ExposeFlags {
+  color?: boolean;
+  profile?: string[];
+  allProfiles?: boolean;
+}
+
+function runExpose(pathArg: string | undefined, flags: ExposeFlags): void {
+  const target = pathArg ?? ".";
+  let report: Report;
+  try {
+    report = scan(target, { profiles: flags.profile, allProfiles: flags.allProfiles });
+  } catch (err) {
+    process.stderr.write(pc.red(`Error: ${err instanceof Error ? err.message : String(err)}\n`));
+    process.exit(2);
+  }
+
+  const assessment = assessExposure(report);
+  const color = flags.color !== false;
+  process.stdout.write(renderExpose(assessment, { color }) + "\n");
+
+  // A genuine blocker (DON'T EXPOSE YET) exits non-zero so `expose` is usable as
+  // a gate in scripts/CI. Every other verdict exits 0 — the decision is on stdout.
+  if (assessment.verdict === "dont-expose") {
+    process.exit(1);
+  }
+}
+
 function runExplain(pathArg: string, provider: string): void {
   let report: Report;
   try {
@@ -131,6 +161,25 @@ program
   )
   .action((path: string | undefined, opts: ScanFlags) => {
     runScan(path, opts);
+  });
+
+program
+  .command("expose")
+  .description("Answer \"can I safely expose this to the internet?\" with a verdict and a short fix list.")
+  .argument("[path]", "Compose file or directory to assess", ".")
+  .option("--no-color", "Disable colored terminal output")
+  .option(
+    "--profile <name>",
+    "Treat an optional Compose profile as active (repeatable)",
+    (val: string, acc: string[]) => {
+      acc.push(val);
+      return acc;
+    },
+    [] as string[],
+  )
+  .option("--all-profiles", "Assess every service, including all profile-gated ones")
+  .action((path: string | undefined, opts: ExposeFlags) => {
+    runExpose(path, opts);
   });
 
 program

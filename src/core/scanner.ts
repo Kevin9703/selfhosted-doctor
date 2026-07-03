@@ -27,7 +27,7 @@ import {
 } from "./model";
 
 const TOOL_NAME = "selfhosted-doctor";
-const TOOL_VERSION = "0.1.1";
+const TOOL_VERSION = "0.2.0";
 
 export interface ScanOptions {
   /** ISO timestamp to stamp on the report. Defaults to now. */
